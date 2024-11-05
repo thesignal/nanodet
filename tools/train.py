@@ -18,6 +18,7 @@ import warnings
 
 import pytorch_lightning as pl
 import torch
+from torch.utils.data import ConcatDataset
 from pytorch_lightning.callbacks import TQDMProgressBar
 
 from nanodet.data.collate import naive_collate
@@ -34,6 +35,41 @@ from nanodet.util import (
     mkdir,
 )
 
+import matplotlib.pyplot as plt
+import matplotlib.patches as patches
+from torchvision import transforms
+
+def visualize_data_with_bboxes(dataset, num_samples=5):
+    fig, axs = plt.subplots(1, num_samples, figsize=(15, 5))
+
+    for i in range(num_samples):
+        data = dataset[i]
+        img = data['img']
+        img_info = data['img_info']
+        gt_bboxes = data['gt_bboxes']
+
+        # Convert tensor image to numpy and permute to (H, W, C)
+        img_np = img.permute(1, 2, 0).numpy()
+
+        # Display the image
+        ax = axs[i]
+        ax.imshow(img_np)
+
+        # Plot bounding boxes
+        for bbox in gt_bboxes:
+            x_min, y_min, x_max, y_max = bbox
+            rect = patches.Rectangle(
+                (x_min, y_min), x_max - x_min, y_max - y_min,
+                linewidth=2, edgecolor='r', facecolor='none'
+            )
+            ax.add_patch(rect)
+
+        # Display image info like file name and ID
+        ax.set_title(f"ID: {img_info['id']}\nFile: {img_info['file_name']}")
+        ax.axis('off')
+
+    plt.tight_layout()
+    plt.show()
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -73,15 +109,22 @@ def main(args):
 
     evaluator = build_evaluator(cfg.evaluator, val_dataset)
 
+    multiplied_train_dataset = ConcatDataset([train_dataset] * 5)
+
+    # Run visualization on a sample dataset
+    visualize_data_with_bboxes(multiplied_train_dataset)
+
+
     train_dataloader = torch.utils.data.DataLoader(
-        train_dataset,
+        multiplied_train_dataset,
         batch_size=cfg.device.batchsize_per_gpu,
         shuffle=True,
         num_workers=cfg.device.workers_per_gpu,
         pin_memory=True,
         collate_fn=naive_collate,
-        drop_last=True,
+        drop_last=False,
     )
+
     val_dataloader = torch.utils.data.DataLoader(
         val_dataset,
         batch_size=cfg.device.batchsize_per_gpu,
